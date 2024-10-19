@@ -3,7 +3,7 @@ import time
 import random
 import argparse
 import datetime
-
+import pdb
 import numpy as np
 import torch
 import torch.utils.data
@@ -116,6 +116,7 @@ def main(args):
     # Init distributed mode
     utils.init_distributed_mode(args)
 
+    mllogger.disable()
     # Start MLPerf benchmark
     mllogger.event(key=SUBMISSION_BENCHMARK, value=SSD)
     mllogger.event(key=SUBMISSION_DIVISION, value=CLOSED)
