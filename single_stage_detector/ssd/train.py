@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.utils.data
 import torchvision
-
+import torch.multiprocessing as mp
 from ssd_logger import mllogger
 from mlperf_logging.mllog.constants import (SUBMISSION_BENCHMARK, SUBMISSION_DIVISION, SUBMISSION_STATUS,
     SSD, CLOSED, ONPREM, EVAL_ACCURACY, STATUS, SUCCESS, ABORTED,
@@ -263,5 +263,6 @@ def main(args):
 
 
 if __name__ == "__main__":
+    mp.set_start_method('spawn')  
     args = parse_args()
     main(args)
