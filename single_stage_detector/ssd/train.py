@@ -149,12 +149,14 @@ def main(args):
     args.num_classes = num_classes
 
     print("Creating model")
+    breakpoint()
     model = retinanet_from_backbone(backbone=args.backbone,
                                     num_classes=num_classes,
                                     image_size=args.image_size,
                                     data_layout=args.data_layout,
                                     pretrained=args.pretrained,
                                     trainable_backbone_layers=args.trainable_backbone_layers)
+    breakpoint()
     model.to(device)
 
     if args.data_layout == 'channels_last':
