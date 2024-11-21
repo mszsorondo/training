@@ -7,11 +7,11 @@ import json
 #os.environ["FIFTYONE_DATABASE_VALIDATION"] = "0"
 import fiftyone as fo
 import fiftyone.zoo as foz
-
+import pdb
 #parser = argparse.ArgumentParser(description='Download OpenImages using FiftyOne', add_help=True)
 # parser.add_argument('--dataset-dir', default='/open-images-v6', help='dataset download location')
 
-dataset_dir = r'C:/Users/msoro/fiftyone/open-images-v6'
+dataset_dir = r'C:/Users/Usuario-PC/fiftyone/open-images-v6'
 
 #parser.add_argument('--splits', default=['train', 'validation'], choices=['train', 'validation', 'test'],
  #                   nargs='+', type=str,
@@ -31,12 +31,12 @@ max_samples=300
 print("Downloading open-images dataset ...")
 dataset = foz.load_zoo_dataset(
     name_or_url="open-images-v6",
-    classes=classes,
+    #label_field="ground_truth",
     splits=splits,
     dataset_name="open-images",
     max_samples=max_samples
 )
-
+breakpoint()
 print("Converting dataset to coco format ...")
 for split in splits:
     output_fname = os.path.join(dataset_dir, split, "labels", output_labels)
@@ -46,7 +46,7 @@ for split in splits:
     split_view.export(
         labels_path=output_fname,
         dataset_type=fo.types.COCODetectionDataset,
-        label_field="ground_truth", #si tira error
+        label_field="detections", #si tira error
         #label_field='detections_detections',
         classes=classes)
     # Add iscrowd label to openimages annotations

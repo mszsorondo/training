@@ -21,8 +21,10 @@ import presets
 from coco_utils import get_coco, get_openimages
 from engine import train_one_epoch, evaluate
 from model.retinanet import retinanet_from_backbone
-
-
+from extra.models import retinanet as tg_retinanet
+from extra.models.resnet import ResNeXt50_32X4D
+from tinygrad.nn.state import get_parameters, get_state_dict
+from tinygrad.nn.optim import Adam as Adam_tg
 
 def get_dataset_fn(name):
     paths = {
@@ -118,10 +120,6 @@ def main(args):
 
     mllogger.disable()
     # Start MLPerf benchmark
-    mllogger.event(key=SUBMISSION_BENCHMARK, value=SSD)
-    mllogger.event(key=SUBMISSION_DIVISION, value=CLOSED)
-    mllogger.event(key=SUBMISSION_STATUS, value=ONPREM)
-    mllogger.start(key=INIT_START, sync=True)
 
     if args.output_dir:
         utils.mkdir(args.output_dir)
@@ -134,13 +132,6 @@ def main(args):
         args.seed = (args.seed + utils.get_rank()) % 2**32
     torch.manual_seed(args.seed)
     np.random.seed(seed=args.seed)
-    mllogger.event(key=SEED, value=args.seed, log_rank=True)
-
-    # Print args
-    mllogger.event(key='local_batch_size', value=args.batch_size)
-    mllogger.event(key=GLOBAL_BATCH_SIZE, value=args.batch_size*utils.get_world_size())
-    mllogger.event(key=EPOCH_COUNT, value=args.epochs)
-    mllogger.event(key=FIRST_EPOCH_NUM, value=args.start_epoch)
     print(args)
 
     # Data loading code
@@ -156,7 +147,21 @@ def main(args):
                                     data_layout=args.data_layout,
                                     pretrained=args.pretrained,
                                     trainable_backbone_layers=args.trainable_backbone_layers)
+
+
+    tg_model = tg_retinanet.RetinaNet(ResNeXt50_32X4D())
+
+
+##################copy trainable params##################
+    trainable_params = [p for p in model.named_parameters() if p[1].requires_grad]
+    tgdict = get_state_dict(tg_model)
+    for name,param in trainable_params:
+        tgdict[name].assign(param.clone().detach().numpy())
+        tgdict[name].requires_grad=True
+
     breakpoint()
+################## end copy trainable params##################
+
     model.to(device)
 
     if args.data_layout == 'channels_last':
@@ -171,15 +176,10 @@ def main(args):
         model_without_ddp = model.module
 
     params = [p for p in model.parameters() if p.requires_grad]
+    ##################copy optimizer##################
     optimizer = torch.optim.Adam(params, lr=args.lr)
-
-    mllogger.event(key=OPT_NAME, value=ADAM)
-    mllogger.event(key=OPT_BASE_LR, value=args.lr)
-    mllogger.event(key=OPT_WEIGHT_DECAY, value=0)
-    mllogger.event(key=OPT_LR_WARMUP_EPOCHS, value=args.warmup_epochs)
-    mllogger.event(key=OPT_LR_WARMUP_FACTOR, value=args.warmup_factor)
-    mllogger.event(key=GRADIENT_ACCUMULATION_STEPS, value=1)
-
+    tg_optimizer = Adam_tg([i for i in get_parameters(tg_model) if i.requires_grad], lr=args.lr)
+    ################## end copy optimizer##################
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'])
@@ -188,15 +188,13 @@ def main(args):
 
     # GradScaler for AMP
     scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
-    mllogger.end(key=INIT_STOP, sync=True)
 
     status = ABORTED
     start_time = time.time()
-    mllogger.start(key=RUN_START, sync=True)
 
     # We can't touch data before RUN_START
     print("Creating data loaders")
-    breakpoint()
+
     dataset = dataset_fn(name=args.dataset,
                          root=args.data_path,
                          image_set="train",
@@ -221,9 +219,6 @@ def main(args):
         dataset_test, batch_size=args.eval_batch_size or args.batch_size,
         sampler=test_sampler, num_workers=args.workers,
         pin_memory=True, collate_fn=utils.collate_fn)
-    mllogger.event(key=TRAIN_SAMPLES, value=len(data_loader))
-    mllogger.event(key=EVAL_SAMPLES, value=len(data_loader_test))
-
     print("Running ...")
     status = ABORTED
     if args.test_only:
@@ -258,15 +253,12 @@ def main(args):
                 status = SUCCESS
                 break
 
-    mllogger.end(key=RUN_STOP, metadata={"status": status}, sync=True)
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
-    mllogger.event(key=STATUS, value=status, log_rank=True)
 
 
 if __name__ == "__main__":
-    breakpoint()
     mp.set_start_method('spawn')  
     args = parse_args()
     main(args)
