@@ -19,7 +19,7 @@ from mlperf_logging.mllog.constants import (SUBMISSION_BENCHMARK, SUBMISSION_DIV
 import utils
 import presets
 from coco_utils import get_coco, get_openimages
-from engine import train_one_epoch, evaluate
+from engine_both import train_one_epoch, evaluate
 from model.retinanet import retinanet_from_backbone
 from extra.models import retinanet as tg_retinanet
 from extra.models.resnet import ResNeXt50_32X4D
@@ -159,7 +159,6 @@ def main(args):
         tgdict[name].assign(param.clone().detach().numpy())
         tgdict[name].requires_grad=True
 
-    breakpoint()
 ################## end copy trainable params##################
 
     model.to(device)
@@ -180,6 +179,7 @@ def main(args):
     optimizer = torch.optim.Adam(params, lr=args.lr)
     tg_optimizer = Adam_tg([i for i in get_parameters(tg_model) if i.requires_grad], lr=args.lr)
     ################## end copy optimizer##################
+
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'])
@@ -187,6 +187,7 @@ def main(args):
         args.start_epoch = checkpoint['epoch'] + 1
 
     # GradScaler for AMP
+
     scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
 
     status = ABORTED
@@ -231,7 +232,8 @@ def main(args):
         for epoch in range(args.start_epoch, args.epochs):
             if args.distributed:
                 train_sampler.set_epoch(epoch)
-            train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args)
+
+            train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model)
             if args.output_dir:
                 checkpoint = {
                     'model': model_without_ddp.state_dict(),
