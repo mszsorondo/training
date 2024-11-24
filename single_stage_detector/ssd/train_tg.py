@@ -2,7 +2,9 @@ from extra.models import retinanet
 from extra.models.resnet import ResNeXt50_32X4D
 import pdb
 from tinygrad.nn.state import get_parameters, get_state_dict
-from tinygrad import Tensor, interpolate, dtypes
+from tinygrad import Tensor, dtypes
+from tinygrad import device as tg_device
+from typing import List, Tuple, Dict, Optional
 #tinygrad training
 """
 pytorch parameters
@@ -23,16 +25,16 @@ test_only=False, seed=4044681145, device='cuda', world_size=1, dist_url='env://'
 """
 
 class TrainingRegister:
-	def __init__(self,model):
-		self.model = model
-		self.forward_original_image_sizes = None
+    def __init__(self,model):
+        self.model = model
+        self.forward_original_image_sizes = None
 
-	def store_original_image_sizes(self):
-		self.original_image_sizes: List[Tuple[int, int]] = []
-	    for img in images:
-	        val = img.shape[-2:]
-	        assert len(val) == 2
-	        self.original_image_sizes.append((val[0], val[1]))
+    def store_original_image_sizes(self, images):
+        self.original_image_sizes: List[Tuple[int, int]] = []
+        for img in images:
+            val = img.shape[-2:]
+            assert len(val) == 2
+            self.original_image_sizes.append((val[0], val[1]))
 
 def _resize_image_and_masks(image: Tensor,
                             target: Optional[Dict[str, Tensor]] = None,
@@ -53,11 +55,11 @@ def _resize_image_and_masks(image: Tensor,
 
 
 def resize_boxes(boxes: Tensor, original_size: List[int], new_size: List[int]) -> Tensor:
-	def stack_dim1(tensors):
-    	return Tensor([list(t) for t in zip(*[tensor.numpy() for tensor in tensors])])
+    def stack_dim1(tensors):
+        return Tensor([list(t) for t in zip(*[tensor.numpy() for tensor in tensors])])
     ratios = [
         Tensor(s, dtype=dtypes.float32, device=boxes.device) /
-        Tensor(s_orig, dtype=torch.float32, device=boxes.device)
+        Tensor(s_orig, dtype=dtypes.float32, device=boxes.device)
         for s, s_orig in zip(new_size, original_size)
     ]
     ratio_height, ratio_width = ratios
@@ -71,8 +73,8 @@ def resize_boxes(boxes: Tensor, original_size: List[int], new_size: List[int]) -
 def resize_keypoints(keypoints: Tensor, original_size: List[int], new_size: List[int]) -> Tensor:
     
     ratios = [
-        Tensor(s, dtype=torch.float32, device=keypoints.device) /
-        Tensor(s_orig, dtype=torch.float32, device=keypoints.device)
+        Tensor(s, dtype=dtypes.float32, device=keypoints.device) /
+        Tensor(s_orig, dtype=dtypes.float32, device=keypoints.device)
         for s, s_orig in zip(new_size, original_size)
     ]
     ratio_h, ratio_w = ratios
@@ -83,58 +85,58 @@ def resize_keypoints(keypoints: Tensor, original_size: List[int], new_size: List
     return resized_data
 
 class GeneralizedRCNNTransform:
-	def __init__(self, image_size: Optional[Tuple[int, int]]= None,
+    def __init__(self, image_size: Optional[Tuple[int, int]]= None,
                  image_mean: List[float] = None, image_std: List[float]= None,):
         self.image_size = image_size if image_size is not None else (800,800)
         self.image_mean = [0.485, 0.456, 0.406] if image_mean is None else image_mean
         self.image_std = [0.485, 0.456, 0.406] if image_std is None else image_std
 
-	def normalize(self, image: Tensor) -> Tensor:
-	        if not image.is_floating_point():
-	            raise TypeError(
-	                f"Expected input images to be of floating type (in range [0, 1]), "
-	                f"but found type {image.dtype} instead"
-	            )
-	        dtype, device = image.dtype, image.device
-	        mean = Tensor(self.image_mean, dtype=dtype, device=device)
-	        std = Tensor(self.image_std, dtype=dtype, device=device)
-	        return (image - mean[:, None, None]) / std[:, None, None]
+    def normalize(self, image: Tensor) -> Tensor:
+            if not image.is_floating_point():
+                raise TypeError(
+                    f"Expected input images to be of floating type (in range [0, 1]), "
+                    f"but found type {image.dtype} instead"
+                )
+            dtype, device = image.dtype, image.device
+            mean = Tensor(self.image_mean, dtype=dtype, device=device)
+            std = Tensor(self.image_std, dtype=dtype, device=device)
+            return (image - mean[:, None, None]) / std[:, None, None]
 
-	def forward(self, images, targets):
-	    assert(targets is not None)
-	    targets_copy: List[Dict[str, Tensor]] = []
-	    for t in targets:
-	        data: Dict[str, Tensor] = {}
-	        for k, v in t.items():
-	            data[k] = v
-	        targets_copy.append(data)
-	    targets = targets_copy
-	    
-	    breakpoint()
-	    
-	    for i in range(len(images)):
-	        image = images[i]
-	        target_index = targets[i]
-	        if image.ndim != 3:
-	            raise ValueError("images is expected to be a list of 3d tensors "
-	                             "of shape [C, H, W], got {}".format(image.shape))
-	        image = self.normalize(image)
-	        image, target_index = self.resize(image, target_index)
-	        images[i] = image
-	        if targets is not None and target_index is not None:
-	            targets[i] = target_index
+    def forward(self, images, targets):
+        assert(targets is not None)
+        targets_copy: List[Dict[str, Tensor]] = []
+        for t in targets:
+            data: Dict[str, Tensor] = {}
+            for k, v in t.items():
+                data[k] = v
+            targets_copy.append(data)
+        targets = targets_copy
+        
+        
+        for i in range(len(images)):
+            image = images[i]
+            target_index = targets[i]
+            if image.ndim != 3:
+                raise ValueError("images is expected to be a list of 3d tensors "
+                                 "of shape [C, H, W], got {}".format(image.shape))
+            image = self.normalize(image)
+            image, target_index = self.resize(image, target_index)
+            images[i] = image
+            if targets is not None and target_index is not None:
+                targets[i] = target_index
 
-	    image_sizes = [img.shape[-2:] for img in images]
-	    images = torch.stack(images)
-	    image_sizes_list: List[Tuple[int, int]] = []
-	    for image_size in image_sizes:
-	        assert len(image_size) == 2
-	        image_sizes_list.append((image_size[0], image_size[1]))
+        image_sizes = [img.shape[-2:] for img in images]
+        
+        images = images[0].stack(*images[1:], dim=0) #images = torch.stack(images)
+        image_sizes_list: List[Tuple[int, int]] = []
+        for image_size in image_sizes:
+            assert len(image_size) == 2
+            image_sizes_list.append((image_size[0], image_size[1]))
+        breakpoint()
+        image_list = ImageList(images, image_sizes_list)
+        return image_list, targets
 
-	    image_list = ImageList(images, image_sizes_list)
-	    return image_list, targets
-
-	def resize(self,
+    def resize(self,
                image: Tensor,
                target: Optional[Dict[str, Tensor]] = None,
                ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
@@ -154,12 +156,33 @@ class GeneralizedRCNNTransform:
             target["keypoints"] = keypoints
         return image, target
 
+class ImageList(object):
+    """
+    Structure that holds a list of images (of possibly
+    varying sizes) as a single tensor.
+    This works by padding the images to the same size,
+    and storing in a field the original sizes of each image
+    """
+
+    def __init__(self, tensors: Tensor, image_sizes: List[Tuple[int, int]]):
+        """
+        Args:
+            tensors (tensor)
+            image_sizes (list[tuple[int, int]])
+        """
+        self.tensors = tensors
+        self.image_sizes = image_sizes
+
+    def to(self, device: tg_device) -> 'ImageList':
+        cast_tensor = self.tensors.to(device)
+        return ImageList(cast_tensor, self.image_sizes)
+
 
 if __name__ == "__main__":
-	backbone = ResNeXt50_32X4D()
-	
-	model = retinanet.RetinaNet(backbone)
+    backbone = ResNeXt50_32X4D()
+    
+    model = retinanet.RetinaNet(backbone)
 
-	params = get_parameters(model)
-	
-	breakpoint()
+    params = get_parameters(model)
+    
+    breakpoint()

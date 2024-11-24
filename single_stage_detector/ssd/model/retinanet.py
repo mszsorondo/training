@@ -486,6 +486,7 @@ class RetinaNet(nn.Module):
                 like `scores`, `labels` and `mask` (for Mask R-CNN models).
 
         """
+        breakpoint()
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
 
@@ -508,7 +509,7 @@ class RetinaNet(nn.Module):
             val = img.shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
-
+        breakpoint()
         # transform the input
         images, targets = self.transform(images, targets)
 
