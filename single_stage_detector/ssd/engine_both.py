@@ -10,19 +10,9 @@ from coco_utils import get_coco_api_from_dataset
 from coco_eval import DefaultCocoEvaluator
 import utils
 from torch.nn.functional import interpolate
+from train_tg import GeneralizedRCNNTransform
 
 def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model):
-    def preprocess_img(image):
-        breakpoint()
-        input_mean = torch.tensor([0.485, 0.456, 0.406])
-        input_std = torch.tensor([0.485, 0.456, 0.406])
-        image /= 255
-        image -= input_mean
-        image /= input_std
-        img = interpolate(image[None], size=(800,800), scale_factor=None,
-            mode='bilinear', recompute_scale_factor=None, align_corners=False)[0]
-        
-        return img
     with Tensor.train():
         mllogger.start(key=EPOCH_START, value=epoch, metadata={"epoch_num": epoch}, sync=True)
 
@@ -43,14 +33,14 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
             images = list(image.to(device) for image in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-            tg_images_800 = []
-            tg_images = Tensor([preprocess_img(i.clone()).numpy() for i in images])
-
-            #interpolate(image[None], size=(800,800), scale_factor=None, mode='bilinear', recompute_scale_factor=None, align_corners=False)[0]
+            tg_images = [Tensor(i.clone().numpy()) for i in images]
 
             tg_targets = [{k : Tensor(v.clone().numpy()) for k, v in t.items()} for t in targets]
-            breakpoint()
+
+            tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
+            
             with torch.cuda.amp.autocast(enabled=args.amp):
+                breakpoint()
                 loss_dict = model(images, targets)
                 losses = sum(loss for loss in loss_dict.values())
 

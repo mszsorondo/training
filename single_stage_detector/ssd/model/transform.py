@@ -80,6 +80,7 @@ class GeneralizedRCNNTransform(nn.Module):
                     data[k] = v
                 targets_copy.append(data)
             targets = targets_copy
+        breakpoint()
         for i in range(len(images)):
             image = images[i]
             target_index = targets[i] if targets is not None else None
