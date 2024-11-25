@@ -106,6 +106,9 @@ def parse_args(add_help=True):
                         help='number of distributed processes')
     parser.add_argument('--dist-url', default='env://', help='url used to set up distributed training')
 
+    # testing inputs
+
+    parser.add_argument('--test-fix-inputs', default=False, type=bool, help="Use fixed images loaded from disk.")
     args = parser.parse_args()
 
     args.eval_batch_size = args.eval_batch_size or args.batch_size

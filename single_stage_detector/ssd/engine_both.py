@@ -5,12 +5,13 @@ import torch
 from tinygrad import Tensor
 from ssd_logger import mllogger
 from mlperf_logging.mllog.constants import (EPOCH_START, EPOCH_STOP, EVAL_START, EVAL_STOP, EVAL_ACCURACY)
-
+import pickle
 from coco_utils import get_coco_api_from_dataset
 from coco_eval import DefaultCocoEvaluator
 import utils
 from torch.nn.functional import interpolate
 from train_tg import GeneralizedRCNNTransform
+import numpy as np
 
 def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model):
     with Tensor.train():
@@ -30,16 +31,24 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
             lr_scheduler = utils.warmup_lr_scheduler(optimizer, start_iter, warmup_iters, args.warmup_factor)
 
         for images, targets in metric_logger.log_every(data_loader, args.print_freq, header):
+            if args.test_fix_inputs:
+                with open("fixed_targets.pkl", "rb") as f:
+                    targets = pickle.load(f)
+                print("WARNING: overwriting images and targets for testing")
+                images = np.load("fixed_images.npz")
+                images_l = [images["image1"],images["image2"]]
+                images = [torch.tensor(i) for i in images_l]
+                
+
             images = list(image.to(device) for image in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
+            
             tg_images = [Tensor(i.clone().numpy()) for i in images]
 
             tg_targets = [{k : Tensor(v.clone().numpy()) for k, v in t.items()} for t in targets]
-
             
             tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
-
+            breakpoint()
             with torch.cuda.amp.autocast(enabled=args.amp):
                 breakpoint()
                 loss_dict = model(images, targets)

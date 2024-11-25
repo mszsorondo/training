@@ -80,7 +80,7 @@ class GeneralizedRCNNTransform(nn.Module):
                     data[k] = v
                 targets_copy.append(data)
             targets = targets_copy
-        breakpoint()
+        
         for i in range(len(images)):
             image = images[i]
             target_index = targets[i] if targets is not None else None
@@ -102,6 +102,7 @@ class GeneralizedRCNNTransform(nn.Module):
             image_sizes_list.append((image_size[0], image_size[1]))
 
         image_list = ImageList(images, image_sizes_list)
+        breakpoint()
         return image_list, targets
 
     def normalize(self, image: Tensor) -> Tensor:
