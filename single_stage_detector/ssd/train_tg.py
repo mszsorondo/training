@@ -89,7 +89,7 @@ class GeneralizedRCNNTransform:
                  image_mean: List[float] = None, image_std: List[float]= None,):
         self.image_size = image_size if image_size is not None else (800,800)
         self.image_mean = [0.485, 0.456, 0.406] if image_mean is None else image_mean
-        self.image_std = [0.485, 0.456, 0.406] if image_std is None else image_std
+        self.image_std = [0.229, 0.224, 0.225] if image_std is None else image_std
 
     def normalize(self, image: Tensor) -> Tensor:
             if not image.is_floating_point():
@@ -111,7 +111,6 @@ class GeneralizedRCNNTransform:
                 data[k] = v
             targets_copy.append(data)
         targets = targets_copy
-        
         
         for i in range(len(images)):
             image = images[i]

@@ -47,8 +47,9 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
 
             tg_targets = [{k : Tensor(v.clone().numpy()) for k, v in t.items()} for t in targets]
             
-            tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
-            breakpoint()
+            if args.run_retina:
+                tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
+
             with torch.cuda.amp.autocast(enabled=args.amp):
                 breakpoint()
                 loss_dict = model(images, targets)

@@ -108,7 +108,10 @@ def parse_args(add_help=True):
 
     # testing inputs
 
-    parser.add_argument('--test-fix-inputs', default=False, type=bool, help="Use fixed images loaded from disk.")
+    parser.add_argument('--test-fix-inputs', action='store_true', default=False, help="Use fixed images loaded from disk.")
+    
+    parser.add_argument('--run-retina', action='store_true', default=False, help="run retinanet")
+
     args = parser.parse_args()
 
     args.eval_batch_size = args.eval_batch_size or args.batch_size
