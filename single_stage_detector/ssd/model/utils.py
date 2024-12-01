@@ -63,6 +63,8 @@ class IntermediateLayerGetter(nn.ModuleDict):
     def forward(self, x):
         out = OrderedDict()
         for name, module in self.items():
+            #forward del body del backbone
+            breakpoint()
             x = module(x)
             if name in self.return_layers:
                 out_name = self.return_layers[name]

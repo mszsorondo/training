@@ -49,9 +49,13 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
             
             if args.run_retina:
                 tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
-
-            with torch.cuda.amp.autocast(enabled=args.amp):
+                print("warning: check_degenerate_boxes not implemented")
+                tg_model.check_degenerate_boxes(tg_targets)
                 breakpoint()
+                tg_model(tg_images.tensors)
+
+            images = [i.to(torch.float32) for i in images]
+            with torch.cuda.amp.autocast(enabled=args.amp):
                 loss_dict = model(images, targets)
                 losses = sum(loss for loss in loss_dict.values())
 

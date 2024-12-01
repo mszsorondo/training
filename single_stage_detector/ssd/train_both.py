@@ -25,6 +25,8 @@ from extra.models import retinanet as tg_retinanet
 from extra.models.resnet import ResNeXt50_32X4D
 from tinygrad.nn.state import get_parameters, get_state_dict
 from tinygrad.nn.optim import Adam as Adam_tg
+from torch import Tensor
+from tinygrad import Tensor as tgTensor
 
 def get_dataset_fn(name):
     paths = {
@@ -164,6 +166,9 @@ def main(args):
     for name,param in trainable_params:
         tgdict[name].assign(param.clone().detach().numpy())
         tgdict[name].requires_grad=True
+    for (k,v) in model.state_dict().items():
+        if k in tgdict and k not in trainable_params:
+            tgdict[k] = tgTensor(v.numpy())
 
 ################## end copy trainable params##################
 
@@ -238,6 +243,8 @@ def main(args):
         for epoch in range(args.start_epoch, args.epochs):
             if args.distributed:
                 train_sampler.set_epoch(epoch)
+
+            #if args.run_retina:
 
             train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model)
             if args.output_dir:

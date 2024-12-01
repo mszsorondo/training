@@ -102,7 +102,7 @@ class GeneralizedRCNNTransform(nn.Module):
             image_sizes_list.append((image_size[0], image_size[1]))
 
         image_list = ImageList(images, image_sizes_list)
-        breakpoint()
+
         return image_list, targets
 
     def normalize(self, image: Tensor) -> Tensor:

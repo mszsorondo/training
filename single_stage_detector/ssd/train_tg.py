@@ -131,7 +131,7 @@ class GeneralizedRCNNTransform:
         for image_size in image_sizes:
             assert len(image_size) == 2
             image_sizes_list.append((image_size[0], image_size[1]))
-        breakpoint()
+        #breakpoint()
         image_list = ImageList(images, image_sizes_list)
         return image_list, targets
 
