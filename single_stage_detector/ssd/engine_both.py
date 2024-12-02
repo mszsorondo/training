@@ -43,6 +43,10 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
             images = list(image.to(device) for image in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
             
+            print("torch -> numpy -> tinygrad tensor conversion introduces error")
+            print("torch -> numpy -> tinygrad tensor conversion introduces error")
+            print("torch -> numpy -> tinygrad tensor conversion introduces error")
+
             tg_images = [Tensor(i.clone().numpy()) for i in images]
 
             tg_targets = [{k : Tensor(v.clone().numpy()) for k, v in t.items()} for t in targets]
