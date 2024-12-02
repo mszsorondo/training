@@ -5,6 +5,8 @@ from tinygrad.nn.state import get_parameters, get_state_dict
 from tinygrad import Tensor, dtypes
 from tinygrad import device as tg_device
 from typing import List, Tuple, Dict, Optional
+from torch import save as torchsave
+from torch import load as torchload
 #tinygrad training
 """
 pytorch parameters
@@ -35,6 +37,61 @@ class TrainingRegister:
             val = img.shape[-2:]
             assert len(val) == 2
             self.original_image_sizes.append((val[0], val[1]))
+
+def frozen_bn_forward(self,x:Tensor):
+            batch_mean = self.running_mean
+            # NOTE: this can be precomputed for static inference. we expand it here so it fuses
+            batch_invstd = self.running_var.reshape(1, -1, 1, 1).expand(x.shape).add(self.eps).rsqrt()
+            return x.batchnorm(self.weight, self.bias, batch_mean, batch_invstd)
+
+class RetinaNetTrainer:
+    def __init__(self, tg_model, reference_model, weights_from_disk=False, store_to_disk=False):
+        self.tg_model=tg_model
+        self.reference_model=reference_model
+        if store_to_disk:
+            torchsave(self.reference_model.state_dict(), 'ref_model.pth')
+
+        if weights_from_disk:
+            self.reference_model.load_state_dict(torchload('ref_model.pth', weights_only=True))
+
+
+
+    def copy_params(self):
+        from torch import nn
+        params = [p for p in self.reference_model.named_parameters()]
+        tgdict = get_state_dict(self.tg_model)
+        for name,param in params:
+            tgdict[name].assign(param.clone().detach().numpy())
+            tgdict[name].requires_grad=param.requires_grad
+            #print(name)
+        for (k,v) in self.reference_model.state_dict().items():
+            if k in tgdict and k not in params:
+                tgdict[k] = Tensor(v.numpy())
+        
+
+        for name, module in self.reference_model.named_modules():
+            breakpoint()
+            if isinstance(module, nn.BatchNorm2d):
+                tgdict[name + '.weight'] = Tensor(module.weight.detach().cpu().numpy())
+                tgdict[name + '.bias'] = Tensor(module.bias.detach().cpu().numpy())
+                tgdict[name + '.weight'].requires_grad = module.weight.requires_grad
+                tgdict[name + '.bias'].requires_grad = module.bias.requires_grad
+
+
+
+        self.tg_model.backbone.body.bn1.__class__.__call__ = frozen_bn_forward
+    def set_optimizer(self, lr):
+        from tinygrad.nn.optim import Adam as Adam_tg
+        params = [p for p in self.reference_model.parameters() if p.requires_grad]
+        tg_params = [i for i in get_parameters(self.tg_model) if i.requires_grad]
+    
+        
+        assert(len(params)==len(tg_params))
+        print("Warning: should test that params are the same")
+        #in torch:     optimizer = torch.optim.Adam(params, lr=args.lr)
+        return Adam_tg([i for i in get_parameters(self.tg_model) if i.requires_grad], lr=lr)
+
+
 
 def _resize_image_and_masks(image: Tensor,
                             target: Optional[Dict[str, Tensor]] = None,

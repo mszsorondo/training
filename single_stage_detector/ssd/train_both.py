@@ -27,7 +27,7 @@ from tinygrad.nn.state import get_parameters, get_state_dict
 from tinygrad.nn.optim import Adam as Adam_tg
 from torch import Tensor
 from tinygrad import Tensor as tgTensor
-
+from train_tg import RetinaNetTrainer
 def get_dataset_fn(name):
     paths = {
         "coco": (get_coco, 91),
@@ -113,6 +113,8 @@ def parse_args(add_help=True):
     parser.add_argument('--test-fix-inputs', action='store_true', default=False, help="Use fixed images loaded from disk.")
     
     parser.add_argument('--run-retina', action='store_true', default=False, help="run retinanet")
+    parser.add_argument('--weights-from-disk', action='store_true', default=False, help="load model weights from disk at ref_model.pth")
+    parser.add_argument('--store-to-disk', action='store_true', default=False, help="store model weights to disk as ref_model.pth")
 
     args = parser.parse_args()
 
@@ -160,15 +162,10 @@ def main(args):
     tg_model = tg_retinanet.RetinaNet(ResNeXt50_32X4D())
 
 
-##################copy trainable params##################
-    trainable_params = [p for p in model.named_parameters() if p[1].requires_grad]
-    tgdict = get_state_dict(tg_model)
-    for name,param in trainable_params:
-        tgdict[name].assign(param.clone().detach().numpy())
-        tgdict[name].requires_grad=True
-    for (k,v) in model.state_dict().items():
-        if k in tgdict and k not in trainable_params:
-            tgdict[k] = tgTensor(v.numpy())
+    model.train()
+    trainer = RetinaNetTrainer(tg_model,model, args.weights_from_disk, args.store_to_disk)
+    trainer.copy_params()
+
 
 ################## end copy trainable params##################
 
@@ -185,10 +182,11 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
+
     params = [p for p in model.parameters() if p.requires_grad]
     ##################copy optimizer##################
     optimizer = torch.optim.Adam(params, lr=args.lr)
-    tg_optimizer = Adam_tg([i for i in get_parameters(tg_model) if i.requires_grad], lr=args.lr)
+    tg_optimizer = trainer.set_optimizer(lr=args.lr)
     ################## end copy optimizer##################
 
     if args.resume:
@@ -246,7 +244,7 @@ def main(args):
 
             #if args.run_retina:
 
-            train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model)
+            train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model, trainer)
             if args.output_dir:
                 checkpoint = {
                     'model': model_without_ddp.state_dict(),

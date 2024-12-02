@@ -1,0 +1,8 @@
+python train_both.py --device cpu --data-path "C:\Users\Usuario-PC\fiftyone\open-images-v6" --test-fix-inputs --run-retina --weights-from-disk
+
+with retinanet
+
+
+python train_both.py --device cpu --data-path "C:\Users\Usuario-PC\fiftyone\open-images-v6" --test-fix-inputs --weights-from-disk
+
+without retinanet

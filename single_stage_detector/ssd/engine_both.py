@@ -13,7 +13,7 @@ from torch.nn.functional import interpolate
 from train_tg import GeneralizedRCNNTransform
 import numpy as np
 
-def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model):
+def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, tg_model, trainer):
     with Tensor.train():
         mllogger.start(key=EPOCH_START, value=epoch, metadata={"epoch_num": epoch}, sync=True)
 
@@ -37,7 +37,7 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
                 print("WARNING: overwriting images and targets for testing")
                 images = np.load("fixed_images.npz")
                 images_l = [images["image1"],images["image2"]]
-                images = [torch.tensor(i) for i in images_l]
+                images = [torch.tensor(i, dtype=torch.float32) for i in images_l]
                 
 
             images = list(image.to(device) for image in images)
@@ -49,12 +49,11 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
             
             if args.run_retina:
                 tg_images, tg_targets = GeneralizedRCNNTransform().forward(tg_images, tg_targets)
-                print("warning: check_degenerate_boxes not implemented")
+
                 tg_model.check_degenerate_boxes(tg_targets)
                 breakpoint()
                 tg_model(tg_images.tensors)
 
-            images = [i.to(torch.float32) for i in images]
             with torch.cuda.amp.autocast(enabled=args.amp):
                 loss_dict = model(images, targets)
                 losses = sum(loss for loss in loss_dict.values())
