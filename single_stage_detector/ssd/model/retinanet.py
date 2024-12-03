@@ -531,7 +531,7 @@ class RetinaNet(nn.Module):
             images.tensors = images.tensors.to(memory_format=torch.channels_last)
 
         # get the features from the backbone
-        breakpoint()
+        
         features = self.backbone(images.tensors)
         if isinstance(features, torch.Tensor):
             features = OrderedDict([('0', features)])
@@ -540,6 +540,7 @@ class RetinaNet(nn.Module):
         features = list(features.values())
 
         # compute the retinanet heads outputs using the features
+        breakpoint()
         head_outputs = self.head(features)
 
         # create the set of anchors

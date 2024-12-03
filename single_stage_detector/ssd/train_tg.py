@@ -41,15 +41,26 @@ class TrainingRegister:
             self.original_image_sizes.append((val[0], val[1]))
 
 def frozen_bn_forward2(self,x:Tensor):
+
             batch_mean = self.running_mean
             # NOTE: this can be precomputed for static inference. we expand it here so it fuses
             batch_invstd = self.running_var.reshape(1, -1, 1, 1).expand(x.shape).add(self.eps).rsqrt()
             return x.batchnorm(self.weight, self.bias, batch_mean, batch_invstd)
 def frozen_bn_forward(self, x):
+    breakpoint()
     scale = self.weight * self.running_var.rsqrt()
     bias = self.bias - self.running_mean * scale
     scale = scale.reshape(1, -1, 1, 1)
     bias = bias.reshape(1, -1, 1, 1)
+    return x * scale + bias
+
+def frozen_bn_forward_torchvision(self,x):
+    w = self.weight.reshape(1, -1, 1, 1)
+    b = self.bias.reshape(1, -1, 1, 1)
+    rv = self.running_var.reshape(1, -1, 1, 1)
+    rm = self.running_mean.reshape(1, -1, 1, 1)
+    scale = w * (rv + self.eps).rsqrt()
+    bias = b - rm * scale
     return x * scale + bias
 
 class RetinaNetTrainer:
@@ -65,18 +76,27 @@ class RetinaNetTrainer:
 
 
     def copy_params(self):
-
+        from tinygrad.helpers import get_child 
         from torch import nn
         params = [p for p in self.reference_model.named_parameters()]
         tgdict = get_state_dict(self.tg_model)
+
+        """state_dict = self.reference_model.state_dict()
+                                for k, v in state_dict.items():
+                                  obj = get_child(self.tg_model, k)
+                                  dat = v.detach().numpy()
+                                  assert obj.shape == dat.shape, (k, obj.shape, dat.shape)
+                                  obj.assign(dat)"""
+
         for name,param in params:
             tgdict[name].assign(param.clone().detach().numpy())
             tgdict[name].requires_grad=param.requires_grad
             #print(name)
+
         for (k,v) in self.reference_model.state_dict().items():
             if k in tgdict and k not in params:
                 tgdict[k] = Tensor(v.numpy())
-
+        
         self.tg_model.backbone.body.bn1.weight.assign(Tensor(self.reference_model.backbone.body.bn1.weight.detach().numpy()))
         self.tg_model.backbone.body.bn1.bias.assign(Tensor(self.reference_model.backbone.body.bn1.bias.detach().numpy()))
         self.tg_model.backbone.body.bn1.running_var.assign(Tensor(self.reference_model.backbone.body.bn1.running_var.detach().numpy()))
@@ -84,16 +104,18 @@ class RetinaNetTrainer:
 
         self.tg_model.backbone.body.bn1.weight.requires_grad = self.reference_model.backbone.body.bn1.weight.requires_grad
         self.tg_model.backbone.body.bn1.bias.requires_grad = self.reference_model.backbone.body.bn1.bias.requires_grad
-        self.tg_model.backbone.body.bn1.__class__.__call__ = frozen_bn_forward
+        self.tg_model.backbone.body.bn1.__class__.__call__ = frozen_bn_forward_torchvision
+        self.tg_model.backbone.body.bn1.__call__ = frozen_bn_forward
+        #batch norm weights and biases are not copied for some reason
         for name, module in self.reference_model.named_modules():
             if module.__class__.__name__=="FrozenBatchNorm2d":
-                tgdict[name + '.weight'].assign(Tensor(module.weight.detach().numpy()))
-                tgdict[name + '.bias'].assign(Tensor(module.bias.detach().numpy()))
-                tgdict[name + '.running_var'].assign(Tensor(module.running_var.detach().numpy()))
-                tgdict[name + '.running_mean'].assign(Tensor(module.running_mean.detach().numpy()))
-                tgdict[name + '.weight'].requires_grad = module.weight.requires_grad
-                tgdict[name + '.bias'].requires_grad = module.bias.requires_grad
-                module.__class__.__call__ = frozen_bn_forward
+                get_state_dict(self.tg_model)[name + '.weight'].assign(Tensor(module.weight.detach().numpy()))
+                get_state_dict(self.tg_model)[name + '.bias'].assign(Tensor(module.bias.detach().numpy()))
+                get_state_dict(self.tg_model)[name + '.running_var'].assign(Tensor(module.running_var.detach().numpy()))
+                get_state_dict(self.tg_model)[name + '.running_mean'].assign(Tensor(module.running_mean.detach().numpy()))
+                get_state_dict(self.tg_model)[name + '.weight'].requires_grad = module.weight.requires_grad
+                get_state_dict(self.tg_model)[name + '.bias'].requires_grad = module.bias.requires_grad
+
                 
 
 
