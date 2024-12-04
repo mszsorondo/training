@@ -159,7 +159,7 @@ def main(args):
                                     trainable_backbone_layers=args.trainable_backbone_layers)
 
 
-    tg_model = tg_retinanet.RetinaNet(ResNeXt50_32X4D())
+    tg_model = tg_retinanet.RetinaNet(ResNeXt50_32X4D(), training=True)
 
 
     model.train()

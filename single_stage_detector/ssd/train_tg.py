@@ -2,8 +2,7 @@ from extra.models import retinanet
 from extra.models.resnet import ResNeXt50_32X4D
 import pdb
 from tinygrad.nn.state import get_parameters, get_state_dict
-from tinygrad import Tensor, dtypes
-from tinygrad import device as tg_device
+from tinygrad import Tensor, dtypes, Device
 from typing import List, Tuple, Dict, Optional
 from torch import save as torchsave
 from torch import load as torchload
@@ -47,7 +46,6 @@ def frozen_bn_forward2(self,x:Tensor):
             batch_invstd = self.running_var.reshape(1, -1, 1, 1).expand(x.shape).add(self.eps).rsqrt()
             return x.batchnorm(self.weight, self.bias, batch_mean, batch_invstd)
 def frozen_bn_forward(self, x):
-    breakpoint()
     scale = self.weight * self.running_var.rsqrt()
     bias = self.bias - self.running_mean * scale
     scale = scale.reshape(1, -1, 1, 1)
@@ -63,8 +61,46 @@ def frozen_bn_forward_torchvision(self,x):
     bias = b - rm * scale
     return x * scale + bias
 
+class AnchorGenerator:
+    def __init__(self):
+        self.sizes = ((32, 40, 50), (64, 80, 101), (128, 161, 203), (256, 322, 406), (512, 645, 812))
+        self.aspect_ratios = ((0.5, 1.0, 2.0),) * len(self.sizes)
+        self.cell_anchors = [self.generate_anchors(size, aspect_ratio)
+                             for size, aspect_ratio in zip(self.sizes, self.aspect_ratios)]
+    def generate_anchors(self, scales: List[int], aspect_ratios: List[float], dtype = dtypes.float32,
+                         device = Device.DEFAULT):
+        from tinygrad import Tensor as tgTensor
+        scales = tgTensor(scales, dtype=dtype, device=device)
+        aspect_ratios = tgTensor(aspect_ratios, dtype=dtype, device=device)
+        h_ratios = aspect_ratios.sqrt()
+        w_ratios = 1 / h_ratios
+
+        ws = (w_ratios[:, None] * scales[None, :]).view(-1)
+        hs = (h_ratios[:, None] * scales[None, :]).view(-1)
+
+        base_anchors = (-ws).stack(-hs, ws, hs, dim=1) / 2
+        return base_anchors.round()
+
+    def __call__(self, image_list: ImageList, feature_maps: List[Tensor]) -> List[Tensor]:
+        return self.forward(image_list, feature_maps)
+
+    def forward(self, image_list: ImageList, feature_maps: List[Tensor]) -> List[Tensor]:
+        grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
+        image_size = image_list.tensors.shape[-2:]
+        dtype, device = feature_maps[0].dtype, feature_maps[0].device
+        strides = [[torch.tensor(image_size[0] // g[0], dtype=torch.int64, device=device),
+                    torch.tensor(image_size[1] // g[1], dtype=torch.int64, device=device)] for g in grid_sizes]
+        self.set_cell_anchors(dtype, device)
+        anchors_over_all_feature_maps = self.grid_anchors(grid_sizes, strides)
+        anchors: List[List[torch.Tensor]] = []
+        for _ in range(len(image_list.image_sizes)):
+            anchors_in_image = [anchors_per_feature_map for anchors_per_feature_map in anchors_over_all_feature_maps]
+            anchors.append(anchors_in_image)
+        anchors = [torch.cat(anchors_per_image) for anchors_per_image in anchors]
+        return anchors
+
 class RetinaNetTrainer:
-    def __init__(self, tg_model, reference_model, weights_from_disk=False, store_to_disk=False):
+    def __init__(self, tg_model, reference_model, weights_from_disk=False, store_to_disk=False, anchor_generator=None):
         self.tg_model=tg_model
         self.reference_model=reference_model
         if store_to_disk:
@@ -73,15 +109,15 @@ class RetinaNetTrainer:
         if weights_from_disk:
             self.reference_model.load_state_dict(torchload('ref_model.pth', weights_only=True))
 
-
-
+        self.anchor_generator = AnchorGenerator() if anchor_generator is None else anchor_generator
     def copy_params(self):
         from tinygrad.helpers import get_child 
         from torch import nn
         params = [p for p in self.reference_model.named_parameters()]
         tgdict = get_state_dict(self.tg_model)
 
-        """state_dict = self.reference_model.state_dict()
+        """this maybe also works for setting **some** params, try it again later
+            state_dict = self.reference_model.state_dict()
                                 for k, v in state_dict.items():
                                   obj = get_child(self.tg_model, k)
                                   dat = v.detach().numpy()
@@ -106,7 +142,7 @@ class RetinaNetTrainer:
         self.tg_model.backbone.body.bn1.bias.requires_grad = self.reference_model.backbone.body.bn1.bias.requires_grad
         self.tg_model.backbone.body.bn1.__class__.__call__ = frozen_bn_forward_torchvision
         self.tg_model.backbone.body.bn1.__call__ = frozen_bn_forward
-        #batch norm weights and biases are not copied for some reason
+        #batch norm weights and biases are not copied for some reason (models are not modules)
         for name, module in self.reference_model.named_modules():
             if module.__class__.__name__=="FrozenBatchNorm2d":
                 get_state_dict(self.tg_model)[name + '.weight'].assign(Tensor(module.weight.detach().numpy()))
@@ -271,7 +307,7 @@ class ImageList(object):
         self.tensors = tensors
         self.image_sizes = image_sizes
 
-    def to(self, device: tg_device) -> 'ImageList':
+    def to(self, device: Device) -> 'ImageList':
         cast_tensor = self.tensors.to(device)
         return ImageList(cast_tensor, self.image_sizes)
 
