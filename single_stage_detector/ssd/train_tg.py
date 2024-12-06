@@ -26,6 +26,29 @@ lr=0.0001, warmup_epochs=1, warmup_factor=0.001, workers=4, print_freq=20, eval_
 test_only=False, seed=4044681145, device='cuda', world_size=1, dist_url='env://')
 
 """
+class ImageList(object):
+    """
+    Structure that holds a list of images (of possibly
+    varying sizes) as a single tensor.
+    This works by padding the images to the same size,
+    and storing in a field the original sizes of each image
+    """
+
+    def __init__(self, tensors: Tensor, image_sizes: List[Tuple[int, int]]):
+        """
+        Args:
+            tensors (tensor)
+            image_sizes (list[tuple[int, int]])
+        """
+        self.tensors = tensors
+        self.image_sizes = image_sizes
+
+    def to(self, device: Device) -> 'ImageList':
+        print("WARNING: This is an exact copy of the MLPERF class, method not tested")
+        raise NotImplementedError
+        cast_tensor = self.tensors.to(device)
+        return ImageList(cast_tensor, self.image_sizes)
+
 
 class TrainingRegister:
     def __init__(self,model):
@@ -88,15 +111,61 @@ class AnchorGenerator:
         grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
         image_size = image_list.tensors.shape[-2:]
         dtype, device = feature_maps[0].dtype, feature_maps[0].device
-        strides = [[torch.tensor(image_size[0] // g[0], dtype=torch.int64, device=device),
-                    torch.tensor(image_size[1] // g[1], dtype=torch.int64, device=device)] for g in grid_sizes]
+        strides = [[Tensor(image_size[0] // g[0], dtype=dtypes.int64, device=device),
+                    Tensor(image_size[1] // g[1], dtype=dtypes.int64, device=device)] for g in grid_sizes]
         self.set_cell_anchors(dtype, device)
         anchors_over_all_feature_maps = self.grid_anchors(grid_sizes, strides)
+        
+
         anchors: List[List[torch.Tensor]] = []
         for _ in range(len(image_list.image_sizes)):
             anchors_in_image = [anchors_per_feature_map for anchors_per_feature_map in anchors_over_all_feature_maps]
             anchors.append(anchors_in_image)
-        anchors = [torch.cat(anchors_per_image) for anchors_per_image in anchors]
+        anchors = [anchors_per_image[0].cat(*anchors_per_image[1:]) for anchors_per_image in anchors]
+        breakpoint()
+        return anchors
+    def set_cell_anchors(self, dtype: dtypes, device):
+        self.cell_anchors = [cell_anchor.to(device=device) for cell_anchor in self.cell_anchors]
+
+    def grid_anchors(self, grid_sizes: List[List[int]], strides: List[List[float]]) -> List[Tensor]:
+        """
+        """
+        anchors = []
+        cell_anchors = self.cell_anchors
+        assert cell_anchors is not None
+
+        # Verificación de tamaños consistentes
+        if not (len(grid_sizes) == len(strides) == len(cell_anchors)):
+            raise ValueError("Anchors should be Tuple[Tuple[int]] because each feature "
+                             "map could potentially have different sizes and aspect ratios. "
+                             "There needs to be a match between the number of "
+                             "feature maps passed and the number of sizes / aspect ratios specified.")
+
+        # Iterar sobre cada nivel de mapa de características
+        for size, stride, base_anchors in zip(grid_sizes, strides, cell_anchors):
+            grid_height, grid_width = size
+            stride_height, stride_width = stride
+
+            # Crear los desplazamientos en X e Y
+            shifts_x = Tensor.arange(0, grid_width).cast(dtypes.float32) * stride_width
+            shifts_y = Tensor.arange(0, grid_height).cast(dtypes.float32) * stride_height
+            # Crear la malla 2D (equivalente a meshgrid)
+            shift_y, shift_x = shifts_y.expand(grid_width, -1).T, shifts_x.expand(grid_height, -1)
+
+            # Aplanar los desplazamientos
+            shift_x = shift_x.flatten()
+            shift_y = shift_y.flatten()
+
+            # Combinar los desplazamientos
+            shifts = shift_x.stack(shift_y, shift_x, shift_y, dim=1)
+
+            # Ajustar los anchors base por los desplazamientos
+
+            level_anchors = (shifts.view(-1, 1, 4) + base_anchors.view(1, -1, 4)).reshape(-1, 4)
+
+            # Añadir los anchors calculados para este nivel
+            anchors.append(level_anchors)
+
         return anchors
 
 class RetinaNetTrainer:
@@ -110,6 +179,7 @@ class RetinaNetTrainer:
             self.reference_model.load_state_dict(torchload('ref_model.pth', weights_only=True))
 
         self.anchor_generator = AnchorGenerator() if anchor_generator is None else anchor_generator
+        self.tg_model.set_training_anchor_generator(self.anchor_generator)
     def copy_params(self):
         from tinygrad.helpers import get_child 
         from torch import nn
@@ -290,27 +360,6 @@ class GeneralizedRCNNTransform:
             target["keypoints"] = keypoints
         return image, target
 
-class ImageList(object):
-    """
-    Structure that holds a list of images (of possibly
-    varying sizes) as a single tensor.
-    This works by padding the images to the same size,
-    and storing in a field the original sizes of each image
-    """
-
-    def __init__(self, tensors: Tensor, image_sizes: List[Tuple[int, int]]):
-        """
-        Args:
-            tensors (tensor)
-            image_sizes (list[tuple[int, int]])
-        """
-        self.tensors = tensors
-        self.image_sizes = image_sizes
-
-    def to(self, device: Device) -> 'ImageList':
-        cast_tensor = self.tensors.to(device)
-        return ImageList(cast_tensor, self.image_sizes)
-
 
 if __name__ == "__main__":
     backbone = ResNeXt50_32X4D()
@@ -319,4 +368,3 @@ if __name__ == "__main__":
 
     params = get_parameters(model)
     
-    breakpoint()
