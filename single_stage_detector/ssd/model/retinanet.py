@@ -410,6 +410,7 @@ class RetinaNet(nn.Module):
             match_quality_matrix = box_iou(targets_per_image['boxes'], anchors_per_image)
             matched_idxs.append(self.proposal_matcher(match_quality_matrix))
 
+        breakpoint()
         return self.head.compute_loss(targets, head_outputs, anchors, matched_idxs)
 
     def postprocess_detections(self, head_outputs, anchors, image_shapes):
@@ -540,7 +541,6 @@ class RetinaNet(nn.Module):
         features = list(features.values())
 
         # compute the retinanet heads outputs using the features
-        breakpoint()
         head_outputs = self.head(features)
 
         # create the set of anchors
@@ -552,6 +552,8 @@ class RetinaNet(nn.Module):
             assert targets is not None
 
             # compute the losses
+            breakpoint()
+
             losses = self.compute_loss(targets, head_outputs, anchors)
         else:
             # recover level sizes

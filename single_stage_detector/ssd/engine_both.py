@@ -56,7 +56,7 @@ def train_one_epoch(model, optimizer, scaler, data_loader, device, epoch, args, 
 
                 tg_model.check_degenerate_boxes(tg_targets)
                 breakpoint()
-                tg_model(tg_images)
+                tg_model(tg_images, tg_targets)
 
             with torch.cuda.amp.autocast(enabled=args.amp):
                 loss_dict = model(images, targets)

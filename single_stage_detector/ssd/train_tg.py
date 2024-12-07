@@ -122,7 +122,6 @@ class AnchorGenerator:
             anchors_in_image = [anchors_per_feature_map for anchors_per_feature_map in anchors_over_all_feature_maps]
             anchors.append(anchors_in_image)
         anchors = [anchors_per_image[0].cat(*anchors_per_image[1:]) for anchors_per_image in anchors]
-        breakpoint()
         return anchors
     def set_cell_anchors(self, dtype: dtypes, device):
         self.cell_anchors = [cell_anchor.to(device=device) for cell_anchor in self.cell_anchors]
